@@ -45,7 +45,7 @@ def test_invalid_event_is_422(client):
 
 
 def test_void_of_unknown_target_is_422(client):
-    r = client.post("/events", json=body(type="void", car=None, payload={"target_id": "nope"}))
+    r = client.post("/events", json=body(type="void", car=None, payload={"target_id": str(uuid.uuid4())}))
     assert r.status_code == 422
 
 
@@ -81,3 +81,17 @@ def test_state_includes_lap_analysis(client):
     a = client.get("/state").json()["analysis"]
     assert a["cars"]["A"]["last_lap_s"] == 360.0
     assert a["time_left_s"] is not None
+
+
+def test_void_works_with_the_id_spelling_the_client_used(client):
+    upper = str(uuid.uuid4()).upper()
+    client.post("/events", json=body(id=upper))
+    r = client.post("/events", json=body(type="void", car=None, payload={"target_id": upper}))
+    assert r.status_code == 201
+    assert client.get("/state").json()["cars"]["A"]["laps"] == []
+
+
+def test_partial_cars_config_is_refused_not_saved(client):
+    r = client.post("/events", json=body(type="race_config", car=None, payload={"cars": {"A": {}}}))
+    assert r.status_code == 422
+    assert client.get("/state").status_code == 200

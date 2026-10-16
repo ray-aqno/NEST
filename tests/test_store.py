@@ -70,7 +70,7 @@ def test_void_keeps_original_event(store):
 
 def test_void_of_unknown_target_is_rejected(store):
     with pytest.raises(InvalidTarget):
-        store.append(mk(type="void", car=None, payload={"target_id": "nope"}))
+        store.append(mk(type="void", car=None, payload={"target_id": str(uuid.uuid4())}))
 
 
 def test_void_of_other_race_target_is_rejected(store):
@@ -129,3 +129,28 @@ def test_samples_round_trip(store):
         ("cvt_secondary", 4, 0),
     ]
     assert store.samples("practice") == []
+
+
+# --- review fixes (PR #1) ---
+
+def test_failed_sample_batch_saves_nothing(store):
+    rows = [
+        {"ch": "cvt_primary", "board_ms": 1000, "count": 10, "period_us": 20000, "ts_race": None},
+        {"ch": "cvt_primary", "board_ms": 1100, "count": None, "period_us": 20000, "ts_race": None},
+    ]
+    with pytest.raises(sqlite3.IntegrityError):
+        store.insert_samples("baja", rows)
+    assert store.samples("baja") == []
+
+
+def test_store_recovers_after_a_failed_insert(tmp_path):
+    s = Store(tmp_path / "nest.db")
+    raw = sqlite3.connect(tmp_path / "nest.db")
+    raw.execute("CREATE TRIGGER fail_b BEFORE INSERT ON events WHEN NEW.car = 'B' "
+                "BEGIN SELECT RAISE(ABORT, 'simulated write failure'); END")
+    raw.commit()
+    raw.close()
+    with pytest.raises(sqlite3.IntegrityError):
+        s.append(mk(car="B"))
+    assert s.append(mk(car="A"))["seq"] == 1  # store is not wedged in an open transaction
+    s.close()

@@ -79,7 +79,7 @@ class Store:
             try:
                 existing = self._get(ev.id)
                 if existing is not None:
-                    self._conn.execute("ROLLBACK")
+                    self._conn.execute("ROLLBACK")  # read-only so far; release the write lock
                     same = (existing["ts"], existing["race_id"], existing["car"], existing["type"],
                             existing["payload"], existing["source"]) == (
                             ev.ts, ev.race_id, ev.car, ev.type, ev.payload, ev.source)
@@ -94,8 +94,11 @@ class Store:
                     (ev.id, ev.ts, ev.race_id, ev.car, ev.type, payload, ev.source),
                 )
                 self._conn.execute("COMMIT")
-            except InvalidTarget:
-                self._conn.execute("ROLLBACK")
+            except BaseException:
+                # Any failure (invalid target, constraint, I/O) must not leave the shared
+                # connection inside a transaction, or every later write fails at BEGIN.
+                if self._conn.in_transaction:
+                    self._conn.execute("ROLLBACK")
                 raise
             return {"id": ev.id, "seq": cur.lastrowid, "ts": ev.ts, "race_id": ev.race_id,
                     "car": ev.car, "type": ev.type, "payload": json.loads(payload), "source": ev.source}
@@ -141,14 +144,21 @@ class Store:
         return r[0] if r else None
 
     def insert_samples(self, race_id: str, rows: list[dict[str, Any]]) -> None:
+        """All rows or none, in one transaction (one fsync, not one per row)."""
         with self._lock:
-            with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            try:
                 self._conn.executemany(
                     "INSERT INTO samples (race_id, ch, board_ms, count, period_us, ts_race) "
                     "VALUES (?, ?, ?, ?, ?, ?)",
                     [(race_id, r["ch"], r["board_ms"], r["count"], r["period_us"], r["ts_race"])
                      for r in rows],
                 )
+                self._conn.execute("COMMIT")
+            except BaseException:
+                if self._conn.in_transaction:
+                    self._conn.execute("ROLLBACK")
+                raise
 
     def samples(self, race_id: str) -> list[dict[str, Any]]:
         with self._lock:

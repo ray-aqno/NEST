@@ -1,6 +1,7 @@
 """Event envelope, per-type payload schemas, and race config (SPEC: Event envelope, Config)."""
 
 import json
+import math
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,6 +19,23 @@ CAR_FORBIDDEN = {"race_config", "race_start", "race_end"}
 CORRECTIONS = {"void", "amend"}
 
 
+def normalize_id(value: str) -> str:
+    """Event ids and correction targets share one canonical spelling (lowercase, hyphenated)."""
+    return str(uuid.UUID(value))
+
+
+def require_finite(value: Any) -> None:
+    """JSON has no Infinity/NaN; storing one would break every later /state read."""
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ValueError("numbers must be finite")
+    if isinstance(value, dict):
+        for v in value.values():
+            require_finite(v)
+    elif isinstance(value, list):
+        for v in value:
+            require_finite(v)
+
+
 def normalize_ts(value: str) -> str:
     """ISO8601 with timezone -> UTC, millisecond precision, 'Z' suffix (sorts lexically)."""
     dt = datetime.fromisoformat(value)
@@ -28,7 +46,7 @@ def normalize_ts(value: str) -> str:
 
 
 class _Payload(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
 
 class Empty(_Payload):
@@ -65,10 +83,20 @@ class Note(_Payload):
 class Void(_Payload):
     target_id: str
 
+    @field_validator("target_id")
+    @classmethod
+    def _target(cls, v: str) -> str:
+        return normalize_id(v)
+
 
 class Amend(_Payload):
     target_id: str
     ts: str
+
+    @field_validator("target_id")
+    @classmethod
+    def _target(cls, v: str) -> str:
+        return normalize_id(v)
 
     @field_validator("ts")
     @classmethod
@@ -77,6 +105,7 @@ class Amend(_Payload):
 
 
 class CarConfig(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
     name: str = ""
     number: str = ""
     drivers: list[str] = []
@@ -88,13 +117,13 @@ class CarConfig(BaseModel):
 
 
 class ChannelConfig(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", allow_inf_nan=False)
     pulses_per_rev: float = Field(gt=0)
 
 
 class RaceConfig(BaseModel):
     # extra="allow": Phase 2 keys (tank_l, burn_l_per_lap, ...) are accepted but unused.
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", allow_inf_nan=False)
     format: Literal["time", "distance", "heats"]
     duration_min: float | None = Field(default=None, gt=0)
     distance_laps: int | None = Field(default=None, gt=0)
@@ -106,6 +135,14 @@ class RaceConfig(BaseModel):
     stall_factor: float = Field(gt=0)
     stall_window_laps: int = Field(ge=1)
     stall_min_laps: int = Field(ge=1)
+
+    @field_validator("cars")
+    @classmethod
+    def _both_cars(cls, v: dict[str, CarConfig]) -> dict[str, CarConfig]:
+        # race_config is a full config: a missing car would leave the board with nothing to show.
+        if set(v) != {"A", "B"}:
+            raise ValueError("cars must configure both A and B")
+        return v
 
     @field_validator("cvt_ratio_band")
     @classmethod
@@ -162,7 +199,7 @@ class EventIn(BaseModel):
     @field_validator("id")
     @classmethod
     def _id(cls, v: str) -> str:
-        return str(uuid.UUID(v))
+        return normalize_id(v)
 
     @field_validator("ts")
     @classmethod
@@ -179,4 +216,5 @@ class EventIn(BaseModel):
             effective_config(self.payload)  # validate against defaults; store as sent
         else:
             self.payload = PAYLOADS[self.type].model_validate(self.payload).model_dump(mode="json")
+        require_finite(self.payload)  # also covers untyped Phase 2 config keys
         return self
