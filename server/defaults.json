@@ -1,0 +1,12 @@
+{
+  "format": "time",
+  "duration_min": 240,
+  "distance_laps": null,
+  "cars": {
+    "A": {"name": "E3", "number": "", "drivers": []},
+    "B": {"name": "E4", "number": "", "drivers": []}
+  },
+  "channels": {},
+  "cvt_ratio_band": null,
+  "cvt_min_secondary_rpm": null
+}
