@@ -1,0 +1,11 @@
+/* High-contrast base; full sunlight theme is T6 (NF-04). No web fonts: offline (NF-01). */
+:root { color-scheme: light; font-family: system-ui, sans-serif; }
+body { margin: 0; background: #fff; color: #000; }
+main { padding: 16px; }
+header { display: flex; align-items: baseline; gap: 16px; }
+.ok { color: #060; font-weight: 700; }
+.bad { color: #b00; font-weight: 700; }
+.cars { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+article { border: 3px solid #000; padding: 12px; }
+dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; font-size: 1.5rem; }
+dt { font-weight: 700; }
