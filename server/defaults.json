@@ -3,10 +3,21 @@
   "duration_min": 240,
   "distance_laps": null,
   "cars": {
-    "A": {"name": "E3", "number": "", "drivers": []},
-    "B": {"name": "E4", "number": "", "drivers": []}
+    "A": {
+      "name": "E3",
+      "number": "",
+      "drivers": []
+    },
+    "B": {
+      "name": "E4",
+      "number": "",
+      "drivers": []
+    }
   },
   "channels": {},
   "cvt_ratio_band": null,
-  "cvt_min_secondary_rpm": null
+  "cvt_min_secondary_rpm": null,
+  "stall_factor": 1.5,
+  "stall_window_laps": 5,
+  "stall_min_laps": 3
 }

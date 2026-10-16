@@ -73,3 +73,11 @@ def test_ui_is_served_at_root(client):
     r = client.get("/")
     assert r.status_code == 200
     assert "<title>NEST</title>" in r.text
+
+
+def test_state_includes_lap_analysis(client):
+    client.post("/events", json=body(type="race_start", car=None, ts="2026-10-17T15:00:00.000Z"))
+    client.post("/events", json=body(car="A", ts="2026-10-17T15:06:00.000Z"))
+    a = client.get("/state").json()["analysis"]
+    assert a["cars"]["A"]["last_lap_s"] == 360.0
+    assert a["time_left_s"] is not None

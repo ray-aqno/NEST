@@ -39,11 +39,9 @@ def reduce(events: list[dict[str, Any]]) -> dict[str, Any]:
     log = effective_log(events)
     config_payload = None
     race = {"started_at": None, "ended_at": None}
-    # TODO(question): should a car's starting driver default to cars[X].drivers[0]? Until
-    # answered, driver stays None until the first driver_change event.
-    # TODO(question): should a lap while status is pit/paddock imply the car is back on track?
-    # Until answered, only pit_out/paddock_out change status.
-    cars = {c: {"laps": [], "driver": None, "status": "track", "status_since": None} for c in CARS}
+    # driver None here means "not changed yet"; the configured first driver is filled in below.
+    cars = {c: {"laps": [], "driver": None, "driver_since": None, "status": "track", "status_since": None}
+            for c in CARS}
 
     for e in log:
         t = e["type"]
@@ -54,17 +52,26 @@ def reduce(events: list[dict[str, Any]]) -> dict[str, Any]:
         elif t == "race_end":
             race["ended_at"] = e["ts"]
         elif t == "lap":
-            cars[e["car"]]["laps"].append(e["ts"])
+            car = cars[e["car"]]
+            car["laps"].append(e["ts"])
+            if car["status"] != "track":  # decided: a lap tap implies a missed pit_out/paddock_out
+                car["status"], car["status_since"] = "track", e["ts"]
         elif t == "driver_change":
             cars[e["car"]]["driver"] = e["payload"]["driver"]
+            cars[e["car"]]["driver_since"] = e["ts"]
         elif t in STATUS_AFTER:
             cars[e["car"]]["status"] = STATUS_AFTER[t]
             cars[e["car"]]["status_since"] = e["ts"]
 
+    config = effective_config(config_payload)
+    for c, car in cars.items():
+        if car["driver"] is None:  # decided: before any driver_change, the first configured driver
+            car["driver"] = next(iter(config["cars"][c]["drivers"]), None)
+
     return {
         "race_id": next(iter(race_ids), None),
         "last_seq": max((e["seq"] for e in events), default=0),
-        "config": effective_config(config_payload),
+        "config": config,
         "race": race,
         "cars": cars,
         "log": log,

@@ -66,7 +66,8 @@ def lap(car, i):
 
 
 def without_now(state):
-    return {k: v for k, v in state.items() if k != "now"}
+    # `now` and `analysis` depend on the wall clock; analysis is covered by test_laps.py.
+    return {k: v for k, v in state.items() if k not in ("now", "analysis")}
 
 
 def test_kill_mid_race_loses_no_acknowledged_event(server):

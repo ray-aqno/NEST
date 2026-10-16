@@ -13,6 +13,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from server.engine.laps import analyze
 from server.engine.state import reduce
 from server.events import EventIn
 from server.store import Conflict, InvalidTarget, Store
@@ -42,7 +43,8 @@ def create_app(db_path: str | Path | None = None, ui_dir: str | Path | None = No
     def snapshot(race_id: str | None) -> dict[str, Any]:
         rid = race_id or store.latest_race_id()
         state = reduce(store.events(rid) if rid else [])
-        return {**state, "now": utc_now()}
+        now = utc_now()
+        return {**state, "now": now, "analysis": analyze(state, now)}
 
     @app.post("/events", status_code=201)
     def post_event(ev: EventIn, response: Response) -> dict[str, Any]:

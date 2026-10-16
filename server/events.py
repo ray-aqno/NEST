@@ -102,6 +102,10 @@ class RaceConfig(BaseModel):
     channels: dict[str, ChannelConfig] = {}
     cvt_ratio_band: tuple[float, float] | None = None
     cvt_min_secondary_rpm: float | None = None
+    # Stall alert: >= stall_min_laps laps and now - last lap > stall_factor * median(last stall_window_laps).
+    stall_factor: float = Field(gt=0)
+    stall_window_laps: int = Field(ge=1)
+    stall_min_laps: int = Field(ge=1)
 
     @field_validator("cvt_ratio_band")
     @classmethod

@@ -32,7 +32,8 @@ def test_empty_log_gives_default_state():
     assert s["config"]["format"] == "time"
     assert s["race"] == {"started_at": None, "ended_at": None}
     assert set(s["cars"]) == {"A", "B"}
-    assert s["cars"]["A"] == {"laps": [], "driver": None, "status": "track", "status_since": None}
+    assert s["cars"]["A"] == {"laps": [], "driver": None, "driver_since": None,
+                              "status": "track", "status_since": None}
 
 
 def test_lap_is_recorded_for_its_car():
@@ -85,7 +86,31 @@ def test_pit_and_paddock_status():
 def test_driver_change_sets_driver():
     log = Log()
     log.add("driver_change", 10, car="B", driver="Sam")
-    assert reduce(log.events)["cars"]["B"]["driver"] == "Sam"
+    car = reduce(log.events)["cars"]["B"]
+    assert (car["driver"], car["driver_since"]) == ("Sam", ts(10))
+
+
+def test_driver_defaults_to_first_configured():
+    log = Log()
+    log.add("race_config", 0, cars={"A": {"drivers": ["Ana", "Ben"]}, "B": {"drivers": []}})
+    s = reduce(log.events)
+    assert (s["cars"]["A"]["driver"], s["cars"]["A"]["driver_since"]) == ("Ana", None)
+    assert s["cars"]["B"]["driver"] is None
+
+
+def test_lap_while_in_pit_returns_car_to_track():
+    log = Log()
+    log.add("pit_in", 10, car="A", reason="check")
+    log.add("lap", 90, car="A")
+    car = reduce(log.events)["cars"]["A"]
+    assert (car["status"], car["status_since"], car["laps"]) == ("track", ts(90), [ts(90)])
+
+
+def test_lap_on_track_does_not_touch_status_since():
+    log = Log()
+    log.add("pit_out", 10, car="A")
+    log.add("lap", 90, car="A")
+    assert reduce(log.events)["cars"]["A"]["status_since"] == ts(10)
 
 
 def test_fuel_is_logged_but_not_modelled():
@@ -93,7 +118,7 @@ def test_fuel_is_logged_but_not_modelled():
     log.add("fuel_added", 10, car="A", liters=5.7, cans=1, filled_to_full=True)
     s = reduce(log.events)
     assert [e["type"] for e in s["log"]] == ["fuel_added"]
-    assert set(s["cars"]["A"]) == {"laps", "driver", "status", "status_since"}
+    assert set(s["cars"]["A"]) == {"laps", "driver", "driver_since", "status", "status_since"}
 
 
 def test_latest_race_config_wins():
